@@ -1,0 +1,178 @@
+---
+title: Global Terrorism Trends"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Import Global Terrorism Database dataset.
+
+```{r}
+install.packages("tidyverse")
+library(tidyverse)
+GTD_raw <- read.csv("C:/Users/binya/Desktop/Ryerson/CMKE - 134 Capstone/Data Sets/Global Terrorism/globalterrorismdb_0718dist.csv")
+
+```
+#Import United Nations Population dataset.
+```{r}
+UNpopfile <- read.csv("C:/Users/binya/Desktop/Ryerson/CMKE - 134 Capstone/Data Sets/UNpopfile.csv")
+str(UNpopfile)
+head(UNpopfile)
+
+```
+
+#Data cleaning GTD_raw: Selected relvante 18 variables out of 135 and renamed variables for ease of use. Also, using the mutate and ifself commands a new variable called 'Decade" was created to display the sum of attacks by decade.
+```{r}
+GTD_clean <- GTD_raw %>%
+select(iyear, imonth, iday, country_txt, region_txt, city, latitude, longitude, summary, multiple, attacktype1_txt, targtype1_txt, targsubtype1_txt, gname, weaptype1_txt, nkill, nwound, nkillter)
+
+sum(is.na(GTD_clean))
+
+GTD_clean <- GTD_clean %>%
+rename(year = iyear, month = imonth, day = iday, country = country_txt, region = region_txt, multiple_attack = multiple, attacktype = attacktype1_txt, target_type = targtype1_txt, target_sub_type = targsubtype1_txt, group_name = gname, weapon_type = weaptype1_txt)
+
+str(GTD_clean)
+
+GTD_clean <- GTD_clean %>%
+mutate(decade = 
+ifelse(year<1980, '70s', 
+ifelse(year < 1990, '80s', 
+ifelse(year < 2000, '90s', 
+ifelse( year < 2010, '2000s', '2010s')))))
+
+GTD_clean$decade <- factor(GTD_clean$decade, levels=c("70s", "80s", "90s", "2000s", "2010s"))
+
+```
+#Data cleaning UNPopfile: Relevant variables (Location, Time, and PopTotal) were kept and split into current named pop (1969 to 2017 time of data being published) and future_pop (2017 to 2100).
+```{r}
+pop <- UNpopfile %>%
+select(-MidPeriod, -PopMale, -PopFemale, -VarID)
+head(pop)
+
+pop <- pop %>% 
+filter(Time > 1969 & Variant == 'Medium' & Time < 2017) %>%
+select(-Variant, -LocID)
+
+future_pop <- UNpopfile %>%
+filter(Time >2016 & Variant == 'Medium') %>%
+select(-Variant, -LocID, -MidPeriod, -PopMale, -PopFemale, -VarID)
+tail(future_pop)
+
+```
+#EDA: Has terrosim increased over time? Clearly has gone up significantly since 1970 but the data shows that the decade over decade increase is not linear (80's and 90's had more terrorist attacks than 2000's).
+```{r}
+GTD_clean %>%
+summarise(nr_of_attacks = n()) 
+
+ggplot(data=GTD_clean, aes(x=year, fill=decade))+
+geom_histogram(stat='count') +
+theme(axis.text.x= element_text(angle=45, hjust=2)) +
+labs(title='Global Terrorist Attacks Over Time Period (1970-2017)')
+
+GTD_clean %>%
+group_by(decade) %>%
+summarise(nr_of_attacks = n()) %>%
+arrange(desc(nr_of_attacks)) %>%head(n=10)  
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+# What types of attacks are most common?  Terrorist attacks by type distribution shows Bombing/Explosion attack type is most common with 88,255 incedents and Armed Assult is second with 42,669. Hostage taking/hijacking seem to be the least common types. 
+```{r}
+ggplot(data = GTD_clean, aes(x = GTD_clean$attacktype)) + 
+theme(axis.text.x = element_text(angle = 45, hjust = 1)) +   
+geom_histogram(stat = "count") +
+labs(title='Distribution of Terrorism Attacks by Type')
+
+GTD_clean %>%
+group_by(attacktype) %>%
+summarise(nr_of_attacks = n()) %>%
+arrange(desc(nr_of_attacks)) %>%
+head(n=10) 
+```
+# What are the most common terrorist targets over time? Private citizens/property are by far the most common targets however millitary, police and government combined make up the most common targets. 
+```{r}
+ggplot(data=GTD_clean, aes(x=target_type)) +
+geom_histogram(stat='count') +
+theme(axis.text.x= element_text(angle=45, hjust=1)) +
+labs(title='Distribtuion of most Common Terrorist Targets')
+
+GTD_clean %>%
+group_by(target_type) %>%
+summarise(nr_of_attacks = n()) %>%
+arrange(desc(nr_of_attacks)) %>%
+head(n=10)
+```
+# What does the data tell us about  the most common locations (regions, countries, cities) for a terorism? Middle East and Africa have the most number of attacks for a region. Iraq (Baghdad) and Pakistan (Karachi) have the most attacks while Afghanistan is 3rd for country but Kabul is 20 for cities with most number of attacks. 
+```{r}
+GTD_clean %>%
+group_by(region) %>%
+summarise( nr_of_attacks = n()) %>%
+arrange(desc(nr_of_attacks)) %>%
+head(n=10)
+
+ggplot(data=GTD_clean, aes(x=region)) +
+geom_histogram(stat='count') +
+theme(axis.text.x= element_text(angle=45, hjust=1)) +
+labs(title='Distribution of Terrorist Attacks by Geographical Region')
+
+GTD_clean %>%
+group_by(country) %>%
+summarise( nr_of_attacks = n()) %>%
+arrange(desc(nr_of_attacks)) %>%
+head(n=20)
+
+GTD_clean %>%
+filter(city != 'Unknown') %>%
+group_by(city) %>%
+summarise( nr_of_attacks = n()) %>%
+arrange(desc(nr_of_attacks)) %>%
+head(n=20)
+
+```
+# What terrorist groups are responsible for most of the attacks? The Taliban and ISIL are the top 2 groups responsible for number of attacks.  However, there are 98909 number of attacks total so there are a lot of groups with a few attacks. 
+```{r}
+top15_ter_grps <- GTD_clean %>%
+filter(group_name != "Unknown") %>%
+group_by(group_name) %>%
+summarise(nr_of_attacks = n()) %>%
+arrange(desc(nr_of_attacks)) %>%
+head(n=15)
+       
+top15_ter_grps
+
+ggplot(data=top15_ter_grps) +
+stat_summary(aes(x=group_name, y=nr_of_attacks), geom="bar") +
+theme(axis.text.x= element_text(angle=45, hjust=1)) +
+labs(title='Terrorist Attacks Committed by Group')
+
+
+
+```
+# Have the number of terrorist attacks gone up when compared to population growth in the same time period? This requires that the pop dataset is joined with  the GTD_clean dataset by year. Graph shows that number of attacks increased dramatically starting in 2010 and more than doubled by 2010.
+```{r}
+
+pop_world <- pop %>%
+filter(Location == "World") %>%
+select(-Location)
+
+GTD_pop <- inner_join(GTD_clean, pop_world, by= c("year" = "Time"))
+
+plot_GTD_pop <- ggplot(data=GTD_pop, aes(x=year)) +
+geom_histogram(aes(col='Attack Count'), bins=46) +  
+theme(axis.text.x= element_text(angle=90, hjust=1)) +
+scale_x_continuous(breaks=seq(1970, 2016, 2))
+
+
+plot_GTD_pop + 
+geom_line(aes(y=PopTotal/ 500, col='Population Size'), size=1, linetype ="dashed") + 
+scale_y_continuous(sec.axis = sec_axis(~ . * 500000, name = "Population")) +
+labs(y = "Attack Count", x = "Year", colour = "Legend") +
+theme(legend.position = c(0.1, 0.9)) +
+labs(title="Number of Terrorist Attacks vs Population Growth")
+
+
+```
